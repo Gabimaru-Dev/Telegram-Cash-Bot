@@ -1,111 +1,185 @@
-const { Telegraf } = require('telegraf');
-const fs = require('fs');
+const { Telegraf, Markup } = require('telegraf');
 const express = require('express');
-
-const bot = new Telegraf('8174762710:AAG0-lRsZCXDmaPFiPQlB2pXzUQ4ydszqko'); // Replace with your actual bot token
-const CHANNEL_USERNAME = '@gabimarutechchannel';
-const MIN_WITHDRAWAL = 75000;
-const usersFile = './users.json';
-
-// Keep-alive server to prevent Render sleep
+const fs = require('fs');
 const app = express();
-app.get('/', (_, res) => res.send('Bot is alive!'));
-app.listen(process.env.PORT || 3000, () => console.log('Web server running.'));
+const PORT = process.env.PORT || 3000;
 
-function loadUsers() {
-  if (!fs.existsSync(usersFile)) fs.writeFileSync(usersFile, '{}');
-  return JSON.parse(fs.readFileSync(usersFile));
+const BOT_TOKEN = 'YOUR_BOT_TOKEN';
+const CHANNEL = '@gabimarutechchannel'; // Required subscription channel
+
+const bot = new Telegraf(BOT_TOKEN);
+let users = {};
+
+// Load users if exists
+if (fs.existsSync('users.json')) {
+  users = JSON.parse(fs.readFileSync('users.json'));
 }
 
-function saveUsers(users) {
-  fs.writeFileSync(usersFile, JSON.stringify(users, null, 2));
+// Save user data to file
+function saveUsers() {
+  fs.writeFileSync('users.json', JSON.stringify(users, null, 2));
 }
 
-function ensureUser(ctx) {
-  const users = loadUsers();
-  const id = ctx.from.id;
-  if (!users[id]) {
-    users[id] = {
-      id,
-      name: ctx.from.first_name,
-      username: ctx.from.username || '',
-      balance: 0,
-      referrals: [],
-      referredBy: null,
-    };
-    saveUsers(users);
-  }
-  return users[id];
-}
-
+// Start Command
 bot.start(async (ctx) => {
-  const users = loadUsers();
-  const id = ctx.from.id;
-  const ref = ctx.message.text.split(' ')[1];
+  const userId = ctx.from.id.toString();
 
-  if (!users[id]) {
-    users[id] = {
-      id,
-      name: ctx.from.first_name,
-      username: ctx.from.username || '',
+  // Check if user is new
+  if (!users[userId]) {
+    const ref = ctx.message.text.split(' ')[1]; // referral code
+    users[userId] = {
+      id: userId,
       balance: 0,
       referrals: [],
-      referredBy: ref || null,
+      tasksDone: [],
     };
 
-    // Add bonus to referrer
-    if (ref && users[ref] && ref !== String(id)) {
-      users[ref].referrals.push(id);
-      users[ref].balance += 250;
+    // Add referrer bonus
+    if (ref && ref !== userId && users[ref]) {
+      users[ref].balance += 5000;
+      users[ref].referrals.push(userId);
+      await bot.telegram.sendMessage(ref, `You got ₦5,000 for referring @${ctx.from.username || ctx.from.first_name}`);
     }
 
-    saveUsers(users);
+    saveUsers();
   }
 
-  const member = await ctx.telegram.getChatMember(CHANNEL_USERNAME, id).catch(() => null);
-
-  if (!member || ['left', 'kicked'].includes(member.status)) {
-    return ctx.reply(`You must join our channel to use this bot:\n${CHANNEL_USERNAME}`);
+  // Ask to join the channel first
+  try {
+    const member = await ctx.telegram.getChatMember(CHANNEL, userId);
+    if (!['member', 'administrator', 'creator'].includes(member.status)) {
+      return ctx.reply(`You must join our channel first:\n${CHANNEL}`);
+    }
+  } catch (e) {
+    return ctx.reply(`Please join our channel to continue:\n${CHANNEL}`);
   }
 
-  ctx.reply(`Welcome ${ctx.from.first_name}!\n\nEarn free money by referring friends and completing tasks.\n\nUse /menu to get started.`);
+  sendHome(ctx);
 });
 
-bot.command('menu', (ctx) => {
-  const user = ensureUser(ctx);
-  const refLink = `https://t.me/${ctx.me}?start=${ctx.from.id}`;
-  ctx.replyWithHTML(`
-<b>Your Balance:</b> ₦${user.balance}
-<b>Total Referrals:</b> ${user.referrals.length}
+// Main menu
+function sendHome(ctx) {
+  const userId = ctx.from.id.toString();
+  const bal = users[userId]?.balance || 0;
+  ctx.reply(
+    `👤 *${ctx.from.first_name}'s Account*\n\n` +
+    `💰 *Balance:* ₦${bal.toLocaleString()}\n` +
+    `👥 *Referrals:* ${users[userId].referrals.length}\n\n` +
+    `Earn money by referring and completing tasks!`,
+    {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback('💸 Earn', 'earn'), Markup.button.callback('📤 Withdraw', 'withdraw')],
+        [Markup.button.callback('👥 Referrals', 'referrals'), Markup.button.callback('📢 Advertise', 'advertise')],
+      ])
+    }
+  );
+}
 
-<b>Your Referral Link:</b>
-${refLink}
-
-Use /tasks to earn more.
-Use /withdraw to withdraw (Min: ₦${MIN_WITHDRAWAL}).
-Use /advertise to promote your own channel.
-  `);
+// Button Handlers
+bot.action('earn', async (ctx) => {
+  ctx.answerCbQuery();
+  ctx.editMessageText(
+    `📋 *Available Tasks:*\n\n` +
+    `1. Join this channel: @earnwithusdaily\n` +
+    `2. Join this group: @nairamastergroup\n\n` +
+    `Click "I've Done It" after joining.`,
+    {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback("✅ I've Done It", 'done_tasks')],
+        [Markup.button.callback("⬅️ Back", 'back')]
+      ])
+    }
+  );
 });
 
-bot.command('tasks', (ctx) => {
-  ctx.reply(`
-Tasks to Earn More:
-1. Follow our partner channels.
-2. Submit your username to verify completion.
-3. New tasks coming soon!
-  `);
-});
-
-bot.command('withdraw', (ctx) => {
-  const user = ensureUser(ctx);
-  if (user.balance < MIN_WITHDRAWAL) {
-    return ctx.reply(`You need at least ₦${MIN_WITHDRAWAL} to withdraw. Keep referring and completing tasks!`);
+bot.action('done_tasks', async (ctx) => {
+  const userId = ctx.from.id.toString();
+  if (!users[userId].tasksDone.includes('channel')) {
+    users[userId].balance += 10000;
+    users[userId].tasksDone.push('channel');
+    saveUsers();
+    ctx.reply('✅ Task completed! ₦10,000 added to your balance.');
+  } else {
+    ctx.reply('You already completed this task.');
   }
-  ctx.reply(`Withdrawal request received. Our team will contact you shortly.`);
+  sendHome(ctx);
 });
 
-bot.command('advertise', (ctx) => {
-  ctx.reply(`Want to advertise your bot or channel?\n\nContact @AyodeleBamidele on Telegram or WhatsApp.`);
+bot.action('referrals', (ctx) => {
+  const userId = ctx.from.id.toString();
+  const link = `https://t.me/${ctx.me}?start=${userId}`;
+  ctx.answerCbQuery();
+  ctx.editMessageText(
+    `👥 *Referral Program*\n\n` +
+    `You earn ₦5,000 for each person that joins using your link and completes a task.\n\n` +
+    `🔗 Your referral link:\n${link}`,
+    {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback("⬅️ Back", 'back')]
+      ])
+    }
+  );
+});
+
+bot.action('withdraw', (ctx) => {
+  const userId = ctx.from.id.toString();
+  const bal = users[userId].balance;
+  ctx.answerCbQuery();
+  if (bal >= 75000) {
+    ctx.editMessageText(
+      `💸 *Withdraw Request*\n\n` +
+      `You can withdraw your ₦${bal.toLocaleString()}.\n\n` +
+      `_Note: If your request is not completed in 2 hours, contact admin @ayokunledavid._`,
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback("⬅️ Back", 'back')]
+        ])
+      }
+    );
+  } else {
+    ctx.editMessageText(
+      `❌ You need at least ₦75,000 to withdraw.\n\nYour current balance is ₦${bal.toLocaleString()}.`,
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback("⬅️ Back", 'back')]
+        ])
+      }
+    );
+  }
+});
+
+bot.action('advertise', (ctx) => {
+  ctx.answerCbQuery();
+  ctx.editMessageText(
+    `📢 *Advertise Your Channel*\n\n` +
+    `You can advertise on this bot! Contact the admin:\n\n` +
+    `@ayokunledavid`,
+    {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard([
+        [Markup.button.callback("⬅️ Back", 'back')]
+      ])
+    }
+  );
+});
+
+bot.action('back', (ctx) => {
+  ctx.answerCbQuery();
+  sendHome(ctx);
+});
+
+// Express keep-alive
+app.get('/', (req, res) => {
+  res.send('Bot is running');
+});
+
+app.listen(PORT, () => {
+  console.log(`Web server running on port ${PORT}`);
 });
 
 bot.launch();

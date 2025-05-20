@@ -27,7 +27,7 @@ function saveUsers() {
 }
 
 function getReferralLink(userId) {
-  return `https://t.me/YourBotUsername?start=${userId}`;
+  return `https://t.me/freetelegramoneybot?start=${userId}`;
 }
 
 // Check if user subscribed to a channel

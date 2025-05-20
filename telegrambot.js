@@ -4,8 +4,8 @@ const fs = require('fs');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const BOT_TOKEN = 'YOUR_BOT_TOKEN';
-const CHANNEL = '@gabimarutechchannel'; // Required subscription channel
+const BOT_TOKEN = '7539636237:AAEVPGhdTopI2UfxcVT0qwxcJJl7dGQfdv8';
+const CHANNEL = '@tgsclservice'; // Required subscription channel
 
 const bot = new Telegraf(BOT_TOKEN);
 let users = {};
@@ -82,8 +82,9 @@ bot.action('earn', async (ctx) => {
   ctx.editMessageText(
     `📋 *Available Tasks:*\n\n` +
     `1. Join this channel: @earnwithusdaily\n` +
-    `2. Join this group: @nairamastergroup\n\n` +
-    `Click "I've Done It" after joining.`,
+    `2. Join this group: @gabimarutechchannel\n` +
+    `3. Join this group: @nairamastergroup\n\n` +
+    `Click "I've Done It" after joining. You can also advertise your channel`,
     {
       parse_mode: 'Markdown',
       ...Markup.inlineKeyboard([
@@ -97,10 +98,10 @@ bot.action('earn', async (ctx) => {
 bot.action('done_tasks', async (ctx) => {
   const userId = ctx.from.id.toString();
   if (!users[userId].tasksDone.includes('channel')) {
-    users[userId].balance += 10000;
+    users[userId].balance += 5000;
     users[userId].tasksDone.push('channel');
     saveUsers();
-    ctx.reply('✅ Task completed! ₦10,000 added to your balance.');
+    ctx.reply('✅ Task completed! ₦5,000 added to your balance.');
   } else {
     ctx.reply('You already completed this task.');
   }
@@ -128,7 +129,7 @@ bot.action('withdraw', (ctx) => {
   const userId = ctx.from.id.toString();
   const bal = users[userId].balance;
   ctx.answerCbQuery();
-  if (bal >= 75000) {
+  if (bal >= 70000) {
     ctx.editMessageText(
       `💸 *Withdraw Request*\n\n` +
       `You can withdraw your ₦${bal.toLocaleString()}.\n\n` +
@@ -142,7 +143,7 @@ bot.action('withdraw', (ctx) => {
     );
   } else {
     ctx.editMessageText(
-      `❌ You need at least ₦75,000 to withdraw.\n\nYour current balance is ₦${bal.toLocaleString()}.`,
+      `❌ You need at least ₦70,000 to withdraw.\n\nYour current balance is ₦${bal.toLocaleString()}.`,
       {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
